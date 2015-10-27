@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+
+	<title>Cellicle</title>
+
+	<link rel="stylesheet" href="http://yui.yahooapis.com/pure/0.6.0/pure-min.css">
+
+	<!--<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>-->
+	<script src="jquery.js"></script>
+	<script src="shared.js"></script>
+
+	<style type="text/css">
+		body { overflow: hidden; background-color: black; }
+		#start { position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; background-color: white; z-index: 999 }
+		#start form { width: 300px; margin-left: auto; margin-right: auto; margin-top: 100px; }
+	</style>
+</head>
+<body>
+	<div id="start">
+		<form class="pure-form pure-form-stacked">
+			<fieldset>
+				<legend>Cellicle - Options</legend>
+
+				<label>Server:</label>
+				<input class="server" type="text" value="ws://localhost:8080/">
+
+				<label>Name:</label>
+				<input class="name" type="text">
+
+				<a class="pure-button pure-button-primary" href="#">Start</a>
+			</fieldset>
+		</form>
+	</div>
+
+	<canvas id="canvas">
+		Your browser needs to support canvas for this to work!
+	</canvas>
+
+	<script>
+		$(document).ready(function()
+		{
+			var connection;
+			var $canvas = $('#canvas');
+			var canvas = $canvas.get(0);
+			var context = canvas.getContext('2d');
+			var playerIndex;
+			var game;
+			var stars;
+
+			var polygonShapes = createPolygonShapes();
+
+			var camera = {
+				x: 0,
+				y: 0,
+			};
+
+			var mouse = {
+				x: 0,
+				y: 0,
+				click: false,
+			};
+
+			var keys = {};
+
+			canvas.width  = window.innerWidth;
+			canvas.height = window.innerHeight;
+
+			if (localStorage.getItem('name')) {
+				$('#start .name').val(localStorage.getItem('name'));
+			}
+
+			$('#start a').click(function(event) {
+				event.preventDefault();
+
+				var name = $('#start .name').val();
+				var server = $('#start .server').val();
+
+				if (name && server) {
+					localStorage.setItem('name', name);
+
+					connection = new WebSocket(server, ['soap', 'xmpp']);
+			
+					// Handle errors
+					connection.onerror = function(error) {
+						alert('Sorry, an error occured. Please try again.');
+						console.log('WebSocket Error: ' + error);
+					};
+
+					// When the connection is open, authenticate
+					connection.onopen = function() {
+						connection.sendData = function(type, data)
+						{
+							if (! data) {
+								data = {};
+							}
+
+							data.type = type;
+							dataString = JSON.stringify(data);
+
+							connection.send(dataString);
+						};
+
+						connection.onerror = function(error) {
+							console.log('WebSocket Error: ' + error);
+						};
+
+					  	connection.sendData('auth', {name: name});
+					};
+
+					// Handle incoming messages
+					connection.onmessage = function (messageEvent) {
+						if (messageEvent.data) {
+							try {
+								var data = JSON.parse(messageEvent.data);
+
+								switch (data.type) {
+									case 'init':
+										if (typeof(data.playerIndex) != 'undefined') {
+											playerIndex = data.playerIndex;
+											stars = [];
+
+											$('#start').hide();	
+											window.requestAnimationFrame(gameLoop);
+										} else {
+											console.log('Error: init data invalid.');
+										}
+										break;
+									case 'game':
+										if (! stars || stars.length == 0) {
+											for (var i = 0; i < data.field.sizeX * data.field.sizeY / 50000; i++) {
+												var star = {
+													x: getRandomInt(0, data.field.sizeX),
+													y: getRandomInt(0, data.field.sizeY),
+												}
+												stars.push(star);
+											};
+										}
+
+										game = data;
+
+										break;
+									default:
+										console.log('Error: Message has not type parameter.');
+								}
+							} catch (exception) {
+								console.log(exception);
+								return;
+							}
+						}
+					};
+
+					connection.onclose = function () {
+						alert('The server closed the connection.');
+					}
+				} else {
+					alert('Please enter a name and a server URL.');
+				}
+			});
+
+			$canvas.mousemove(function(event) {
+				mouse.x = event.clientX;
+				mouse.y = event.clientY;
+			});
+
+			$canvas.mousedown(function(event) {
+				mouse.click = true;
+			});
+
+			$canvas.mouseup(function(event) {
+				mouse.click = false;
+			});
+
+			$(window).keydown(function(event) {
+				keys['k' + event.keyCode] = true;
+			});
+
+			$(window).keyup(function(event) {
+				keys['k' + event.keyCode] = false;
+			});
+
+			var gameLoop = function(timestamp)
+			{
+				// Client can receive updates before authentication finished!
+				if (game) {
+					var me = null;
+
+					game.players.some(function (player)
+					{
+						if (player.index == playerIndex) {
+							me = player;
+							return true; // Break the forEach-loop
+						}
+					});
+
+					if (me) {
+						var distance = getDistance(canvas.width / 2, canvas.height / 2, mouse.x, mouse.y);
+
+						var data = { 
+							accel: Math.min(distance / 100, 1),
+							turbo: (keys.k32 == true), // Spacebar
+							fire: mouse.click,
+							angle: getAngle(canvas.width / 2, canvas.height / 2, mouse.x, mouse.y),
+						};
+						connection.sendData('input', data);
+					}
+
+					draw(me);
+				}				
+
+				window.requestAnimationFrame(gameLoop);
+			}
+
+			function draw(me)
+			{
+				context.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+
+				if (me) {
+					camera.x = Math.round(me.x - canvas.width / 2);
+					camera.y = Math.round(me.y - canvas.height / 2);
+				}
+
+				context.fillStyle = 'white';
+				stars.forEach(function (star)
+				{
+					context.fillRect(star.x - camera.x, star.y - camera.y, 1, 1);
+				});
+
+				context.fillStyle = 'yellow';
+				game.asteroids.forEach(function(asteroid, index)
+				{
+					context.beginPath();
+					context.arc(asteroid.x - camera.x, asteroid.y - camera.y, asteroidsRadius, 0, 2 * Math.PI, false);
+					context.fill();
+					context.closePath();
+				});
+
+				game.parts.forEach(function(part, index)
+				{
+					var radius = getRadiusByArea(part.mass * playerRadiusMultiplier);
+					context.beginPath();
+					context.arc(part.x - camera.x, part.y - camera.y, radius, 0, 2 * Math.PI, false);
+					context.fillStyle = game.players[part.playerIndex].color;
+					context.fill();
+					context.closePath();
+				});
+
+				game.players.forEach(function(player, index)
+				{
+					var radius = getRadiusByArea(player.mass * playerRadiusMultiplier);
+					context.beginPath();
+					context.arc(player.x - camera.x, player.y - camera.y, radius, 0, 2 * Math.PI, true);
+					context.fillStyle = player.color;
+					context.fill();
+					context.lineWidth = 7;
+					context.strokeStyle = player.colorDark;
+					context.stroke();
+					context.closePath();
+
+					context.beginPath();
+					context.arc(player.x - camera.x, player.y - camera.y, radius, 
+						(player.angle / 360 * 2 * Math.PI) - 0.5, (player.angle / 360 * 2 * Math.PI) + 0.5, false);
+					context.strokeStyle = player.color;
+					context.stroke();
+					context.closePath();
+
+					context.fillStyle = 'white';
+					context.textAlign = 'center';
+					context.textBaseline = 'middle';
+					context.font = '16px Arial';
+					context.lineWidth = 1;
+					context.strokeStyle = 'black';
+					context.strokeText(player.name, player.x - camera.x, player.y - camera.y);
+					context.fillText(player.name, player.x - camera.x, player.y - camera.y);					
+				});
+
+				context.fillStyle = '#666';
+				game.planetoids.forEach(function(planetoid, index)
+				{
+					var shape = polygonShapes[index % polygonShapes.length];
+
+					context.beginPath();
+
+					context.moveTo(shape[0] + planetoid.x - camera.x, shape[1] + planetoid.y - camera.y);
+					for(var i = 2; i < shape.length; i += 2) {
+						context.lineTo(shape[i] + planetoid.x - camera.x, shape[i + 1] + planetoid.y - camera.y);
+					}
+
+					context.closePath();
+					context.fill();
+				});
+
+				if (me) {
+					context.fillStyle = '#ddd';
+					context.textAlign = 'left';
+					context.textBaseline = 'top';
+					context.fillText('Mass: ' + Math.round(me.mass), 10, 10);
+				}
+			}
+
+			function createPolygonShapes()
+			{
+				var shapes = [];
+				for (var i = 0; i < 5; i++) {
+					var shape = [];
+					var angle = 0;
+					var nodes = 10;
+					for (var j = 0; j < nodes; j++) {
+						var radius = getRandomInt(0.9 * planetoidRadius, 1.1 * planetoidRadius);
+						var x = Math.round(Math.cos(angle * Math.PI / 180) * radius);
+						var y = Math.round(Math.sin(angle * Math.PI / 180) * radius);
+						angle += 360 / nodes;
+						shape.push(x);
+						shape.push(y);
+					}
+					shapes.push(shape);
+				}
+				return shapes;
+			}
+		});
+	</script>
+</body>
+</html>
