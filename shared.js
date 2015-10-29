@@ -1,9 +1,3 @@
-startMass 				= 10; // Player start mass
-playerRadiusMultiplier 	= 200; // Player mass multiplier (to calculate the actual radius)
-asteroidsRadius 		= 12;
-massKillFactor			= 1.3 // Client A has to be this factor bigger then B to eat B
-planetoidRadius			= 70; // Radius (size) of the planetoids
-
 /**
  * Returns the radius of a circle if the area is given
  * (In this game the area of a player's char is the mass.)
@@ -14,6 +8,18 @@ planetoidRadius			= 70; // Radius (size) of the planetoids
 getRadiusByArea = function(area)
 {
 	return Math.sqrt(area / Math.PI);
+}
+
+/**
+ * Returns the area of a circle if the radius is given
+ * (In this game the area of a player's char is the mass.)
+ * 
+ * @param  {Float} radius The radius of the circle
+ * @return {Float}        The area of the circle
+ */
+getAreaByRadius = function(radius)
+{
+	return Math.PI * radius * radius;
 }
 
 /**
@@ -123,6 +129,13 @@ getRandomColor = function()
 	return '#' + r + g + b;
 }
 
+/**
+ * Decides if angle1 is "smaller" or "greater" than angle2.
+ * 
+ * @param  {Float} angle1 The first angle
+ * @param  {Float} angle2 The second angle
+ * @return {Integer}      Returns 1 if angle2 is greater or -1 if angle2 is smaller
+ */
 compareAngles = function(angle1, angle2) 
 {
 	if ((360 + angle1 - angle2) % 360 < 180) {
@@ -131,3 +144,22 @@ compareAngles = function(angle1, angle2)
 		return -1;
 	}
 }
+
+addAngle = function(angle1, angle2)
+{
+	var angle = angle1 + angle2;
+
+	angle %= 360;
+	if (angle < 0) angle += 360;
+
+	return angle;
+}
+
+version 				= 0.1 // Version for both the server and the client - they have to match.
+massMultiplier 			= 0.005; // Player mass multiplier (to calculate a more readable mass)
+startMass 				= 2000; // Player start mass
+asteroidsRadius 		= 12;
+asteroidsMass 			= 200;
+massKillFactor			= 1.3 // Client A has to be this factor bigger then B to eat B
+planetoidsRadius		= 70; // Radius (size) of the planetoids
+planetoidsMass 			= getAreaByRadius(planetoidsRadius);

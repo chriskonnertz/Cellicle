@@ -16,6 +16,9 @@
 		body { overflow: hidden; background-color: black; }
 		#start { position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; background-color: white; z-index: 999 }
 		#start form { width: 300px; margin-left: auto; margin-right: auto; margin-top: 100px; }
+		#start label { color: #AAA; font-weight: bold }
+		#start input { margin-bottom: 20px; }
+		code { padding: 0px 2px; border: 1px solid #ccc; background-color: #ddd;  }
 	</style>
 </head>
 <body>
@@ -32,6 +35,7 @@
 
 				<a class="pure-button pure-button-primary" href="#">Start</a>
 			</fieldset>
+			<p>Use the mouse to accelerate and change the direction of your movement. Press <code>space</code> to start you turbo to escape or hunt, and left click to shoot.</p>
 		</form>
 	</div>
 
@@ -71,6 +75,9 @@
 			if (localStorage.getItem('name')) {
 				$('#start .name').val(localStorage.getItem('name'));
 			}
+			if (localStorage.getItem('server')) {
+				$('#start .server').val(localStorage.getItem('server'));
+			}
 
 			$('#start a').click(function(event) {
 				event.preventDefault();
@@ -80,6 +87,7 @@
 
 				if (name && server) {
 					localStorage.setItem('name', name);
+					localStorage.setItem('server', server);
 
 					connection = new WebSocket(server, ['soap', 'xmpp']);
 			
@@ -107,7 +115,7 @@
 							console.log('WebSocket Error: ' + error);
 						};
 
-					  	connection.sendData('auth', {name: name});
+					  	connection.sendData('auth', {name: name, version: version});
 					};
 
 					// Handle incoming messages
@@ -127,6 +135,10 @@
 										} else {
 											console.log('Error: init data invalid.');
 										}
+										break;
+									case 'version':
+										alert('The server needs version ' + data.version + ' but you have ' + version 
+											+ '.\n\rThe server refused to establish the connection.');
 										break;
 									case 'game':
 										if (! stars || stars.length == 0) {
@@ -239,7 +251,7 @@
 
 				game.parts.forEach(function(part, index)
 				{
-					var radius = getRadiusByArea(part.mass * playerRadiusMultiplier);
+					var radius = getRadiusByArea(part.mass);
 					context.beginPath();
 					context.arc(part.x - camera.x, part.y - camera.y, radius, 0, 2 * Math.PI, false);
 					context.fillStyle = game.players[part.playerIndex].color;
@@ -249,7 +261,7 @@
 
 				game.players.forEach(function(player, index)
 				{
-					var radius = getRadiusByArea(player.mass * playerRadiusMultiplier);
+					var radius = getRadiusByArea(player.mass);
 					context.beginPath();
 					context.arc(player.x - camera.x, player.y - camera.y, radius, 0, 2 * Math.PI, true);
 					context.fillStyle = player.color;
@@ -296,7 +308,7 @@
 					context.fillStyle = '#ddd';
 					context.textAlign = 'left';
 					context.textBaseline = 'top';
-					context.fillText('Mass: ' + Math.round(me.mass), 10, 10);
+					context.fillText('Mass: ' + Math.round(me.mass * massMultiplier), 10, 10);
 				}
 			}
 
@@ -308,7 +320,7 @@
 					var angle = 0;
 					var nodes = 10;
 					for (var j = 0; j < nodes; j++) {
-						var radius = getRandomInt(0.9 * planetoidRadius, 1.1 * planetoidRadius);
+						var radius = getRandomInt(0.9 * planetoidsRadius, 1.1 * planetoidsRadius);
 						var x = Math.round(Math.cos(angle * Math.PI / 180) * radius);
 						var y = Math.round(Math.sin(angle * Math.PI / 180) * radius);
 						angle += 360 / nodes;

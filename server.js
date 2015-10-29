@@ -1,5 +1,5 @@
 var sys         = require('sys');
-var filesys     = require('fs');
+var fs     		= require('fs');
 var util 		= require('util');
 
 require('./shared.js');
@@ -43,6 +43,8 @@ addBot('Gatherer');
 addBot('Gatherer');
 addBot('Gatherer');
 addBot('Gatherer');
+addBot('Gatherer');
+addBot('Gatherer');
 
 setTimeout(gameLoop, 30);
 
@@ -58,7 +60,7 @@ server.on('connection', function connection(connection) {
 		}
 
 		if (! data.type) {
-			log('Error: Missing message type.');
+			log('Error: Missing message param: type.');
 			return;
 		}
 
@@ -68,9 +70,19 @@ server.on('connection', function connection(connection) {
 					log('Error: Missing message param: name');
 					return;
 				}
+				if (! data.version) {
+					log('Error: Missing message param: version');
+					return;
+				}
 
 				data.name = data.name.replace('[', '(');
 				data.name = data.name.replace(']', ')');
+
+				if (data.version != version) {
+					log('Client "' + data.name + '" has a different version: ' + data.version);
+					connection.send(JSON.stringify({ type: 'version', version: version }));
+					return;
+				}
 
 				spawnPlayer(null, data.name);
 
@@ -152,7 +164,7 @@ function gameLoop()
 			spawnProjectilePart(player);
 		}
 
-		var moveDistance = (player.speed + player.accel * 10) / (Math.log(player.mass) / Math.log(10));
+		var moveDistance = (player.speed + player.accel * 10) / (Math.log(player.mass * massMultiplier) / Math.log(10));
 
 		if (player.turbo && Date.now() - player.lastTurbo > 250 && player.mass >= 2 * startMass) {
 			var mass = 0.33 * player.mass;
@@ -179,23 +191,23 @@ function gameLoop()
 			if (player.y > field.sizeY) player.y = field.sizeY;
 
 			// Check collision with asteroids
-			var playerRadius = getRadiusByArea(player.mass * playerRadiusMultiplier);
+			var playerRadius = getRadiusByArea(player.mass);
 			for (var i = 0; i < asteroids.length; i++) {
 				if (getDistance(player.x, player.y, asteroids[i].x, asteroids[i].y) 
 					<= playerRadius) {
-					player.mass++;
+					player.mass += asteroidsMass;
 					spawnAsteroid(i);
 					break;
 				}
 			};
 
 			// Check collision with other player parts
-			playerRadius = getRadiusByArea(player.mass * playerRadiusMultiplier);
+			playerRadius = getRadiusByArea(player.mass);
 			for (var i = 0; i < parts.length; i++) {
 				if (player.index == parts[i].playerIndex) {
 					continue;
 				}
-				//var partRadius = getRadiusByArea(parts[i].mass * playerRadiusMultiplier);
+				//var partRadius = getRadiusByArea(parts[i].mass);
 				if (getDistance(player.x, player.y, parts[i].x, parts[i].y) 
 					<= playerRadius) {
 					if (parts[i].projectile) {
@@ -214,11 +226,15 @@ function gameLoop()
 			// Check collision with planetoids
 			player.isSave = false;
 			for (var i = 0; i < planetoids.length; i++) {
-				if (planetoidRadius >= playerRadius) {
-					if (getDistance(player.x, player.y, planetoids[i].x, planetoids[i].y) <= planetoidRadius) {
+				var distance = getDistance(player.x, player.y, planetoids[i].x, planetoids[i].y);
+
+				if (distance <= planetoidsRadius) {
+					if (planetoidsRadius >= playerRadius) {
 						player.isSave = true;
-						break;
+					} else {
+						spawnCollisionPart(player, planetoids[i], planetoidsMass);
 					}
+					break;
 				}
 			}
 
@@ -228,13 +244,13 @@ function gameLoop()
 					continue;
 				}
 				var distance = getDistance(player.x, player.y, players[i].x, players[i].y);
-				if (distance < getRadiusByArea(player.mass * playerRadiusMultiplier) 
+				if (distance < getRadiusByArea(player.mass) 
 					&& player.mass * massKillFactor >= players[i].mass && ! players[i].isSave)
 				{
 					player.mass += players[i].mass;
 					spawnPlayer(i);
 				}
-				if (distance < getRadiusByArea(players[i].mass * playerRadiusMultiplier) 
+				if (distance < getRadiusByArea(players[i].mass) 
 					&& players[i].mass * massKillFactor >= player.mass && ! player.isSave)
 				{
 					players[i].mass += player.mass;
@@ -444,7 +460,7 @@ function spawnPart(player, mass, amount)
 
 	player.mass -= mass;
 
-	var radius = getRadiusByArea(player.mass * playerRadiusMultiplier);
+	var radius = getRadiusByArea(player.mass);
 
 	for (var i = 0; i < amount; i++) {
 		var angle = (player.angle - 180) % 360; // Backwards
@@ -484,13 +500,52 @@ function spawnProjectilePart(player)
 
 function spawnDebrisPart(player, part)
 {
-	player.mass -= part.mass;
+	var extraMass = part.mass;
+	player.mass -= extraMass;
 
-	//part.mass *= 2;
+	if (player.mass < 0) {
+		extraMass += Math.max(0, player.mass);
+	}
+
+	part.mass *= 1.5;
 	part.playerIndex = player.index;
-	part.speed = 0.75;
+	//part.speed *= 0.75;
 	part.projectile = false;
 	part.angle = getAngle(player.x, player.y, part.x, part.y);
+}
+
+/**
+ * Spawns a "player part" after a collision.
+ * IMPORTANT: The object needs to have x and y attributes!
+ * 
+ * @param  {Object} player      The player object
+ * @param  {Object} object      The colliding object
+ * @param  {Integer} objectMass How much mass?
+ */
+function spawnCollisionPart(player, object, objectMass) {
+	var mass = Math.min(objectMass, player.mass);
+	player.mass -= mass;
+
+	var angle = getAngle(object.x, object.y, player.x, player.y);
+
+	if (mass >= 0.5 * startMass) {
+		for (var i = 0; i < 5; i++) {
+			var part = {
+				x: object.x,
+				y: object.y, 
+				mass: mass / 5,
+				playerIndex: player.index,
+				angle: addAngle(angle, getRandomInt(-45, 45)),
+				speed: 20,
+				projectile: false,
+			}
+			parts.push(part);
+		}
+	}
+
+	if (player.mass < 0.5 * startMass) {
+		spawnPlayer(player.index);
+	}
 }
 
 /**
@@ -505,7 +560,7 @@ function dd()
 }
 
 /**
- * Logs some text (or object) to the console
+ * Logs some text (or object) to the console & a file
  * 
  * @param  {String} text The log text
  */
@@ -517,7 +572,10 @@ function log(text)
 		text = JSON.stringify(text);
 	}
 
-	sys.puts('[' + date.toUTCString() + '] ' + text); 
+	text = '[' + date.toUTCString() + '] ' + text;
+
+	fs.appendFile('log.txt', text + '\r\n'); // File output
+	sys.puts(text); // Console ouput 
 }
 
 log('Server running on port ' + server.options.port + '.');
