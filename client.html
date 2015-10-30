@@ -50,7 +50,7 @@
 			var $canvas = $('#canvas');
 			var canvas = $canvas.get(0);
 			var context = canvas.getContext('2d');
-			var playerIndex;
+			var playerId;
 			var game;
 			var stars;
 
@@ -126,8 +126,8 @@
 
 								switch (data.type) {
 									case 'init':
-										if (typeof(data.playerIndex) != 'undefined') {
-											playerIndex = data.playerIndex;
+										if (typeof(data.playerId) != 'undefined') {
+											playerId = data.playerId;
 											stars = [];
 
 											$('#start').hide();	
@@ -141,17 +141,11 @@
 											+ '.\n\rThe server refused to establish the connection.');
 										break;
 									case 'game':
-										if (! stars || stars.length == 0) {
-											for (var i = 0; i < data.field.sizeX * data.field.sizeY / 50000; i++) {
-												var star = {
-													x: getRandomInt(0, data.field.sizeX),
-													y: getRandomInt(0, data.field.sizeY),
-												}
-												stars.push(star);
-											};
-										}
-
 										game = data;
+
+										if (! stars || stars.length == 0) {
+											createStarfield();
+										}									
 
 										break;
 									default:
@@ -193,6 +187,28 @@
 				keys['k' + event.keyCode] = false;
 			});
 
+			$(window).resize(function(event) {
+				console.log('resized');
+				canvas.width  = window.innerWidth;
+				canvas.height = window.innerHeight;
+				createStarfield();
+			});
+
+			/**
+			 * Creates the star field (=fills the array with star objects)
+			 */
+			function createStarfield()
+			{
+				stars = [];
+				for (var i = 0; i < game.field.sizeX * game.field.sizeY / 25000; i++) {
+					var star = {
+						x: getRandomInt(-canvas.width / 2, game.field.sizeX + canvas.width),
+						y: getRandomInt(-canvas.height / 2, game.field.sizeY + canvas.height),
+					}
+					stars.push(star);
+				};
+			}
+
 			var gameLoop = function(timestamp)
 			{
 				// Client can receive updates before authentication finished!
@@ -201,7 +217,7 @@
 
 					game.players.some(function (player)
 					{
-						if (player.index == playerIndex) {
+						if (player.id == playerId) {
 							me = player;
 							return true; // Break the forEach-loop
 						}
@@ -213,6 +229,7 @@
 						var data = { 
 							accel: Math.min(distance / 100, 1),
 							turbo: (keys.k32 == true), // Spacebar
+							explode: (keys.k69 == true), // e
 							fire: mouse.click,
 							angle: getAngle(canvas.width / 2, canvas.height / 2, mouse.x, mouse.y),
 						};
@@ -254,7 +271,7 @@
 					var radius = getRadiusByArea(part.mass);
 					context.beginPath();
 					context.arc(part.x - camera.x, part.y - camera.y, radius, 0, 2 * Math.PI, false);
-					context.fillStyle = game.players[part.playerIndex].color;
+					context.fillStyle = part.color;
 					context.fill();
 					context.closePath();
 				});

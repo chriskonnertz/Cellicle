@@ -10,8 +10,8 @@ var server = new WebSocketServer({ port: 8080 });
 var game = {
 	type: 'game',
 	field: {
-		sizeX: 3000,
-		sizeY: 2000,
+		sizeX: 3000 * 0.3,
+		sizeY: 2000 * 0.3,
 	},
 	players: [],
 	asteroids: [],
@@ -25,7 +25,7 @@ var asteroids = game.asteroids;
 var planetoids = game.planetoids;
 var parts = game.parts;
 var bots = [];
-var clientUpdateNeeded = false;
+var lastPlayerId = 0;
 
 for (var i = field.sizeX * field.sizeY / 50000; i >= 0; i--) {
 	spawnAsteroid();
@@ -34,7 +34,7 @@ for (var i = field.sizeX * field.sizeY / 50000; i >= 0; i--) {
 for (var i = 0; i < asteroids.length / 20; i++) {
 	spawnPlanetoid();
 };
-
+/*
 addBot('Random');
 addBot('Random');
 addBot('Random');
@@ -45,7 +45,7 @@ addBot('Gatherer');
 addBot('Gatherer');
 addBot('Gatherer');
 addBot('Gatherer');
-
+*/
 setTimeout(gameLoop, 30);
 
 server.on('connection', function connection(connection) {
@@ -88,7 +88,7 @@ server.on('connection', function connection(connection) {
 
 				connection.player = players[players.length - 1];
 
-				connection.send(JSON.stringify({ type: 'init', playerIndex: connection.player.index }));
+				connection.send(JSON.stringify({ type: 'init', playerId: connection.player.id }));
 
 				log('Client "' + connection.player.name + '" authenticated.');
 
@@ -106,6 +106,10 @@ server.on('connection', function connection(connection) {
 					log('Error: Missing message param: fire');
 					return;
 				}
+				if (typeof(data.explode) == 'undefined') {
+					log('Error: Missing message param: explode');
+					return;
+				}
 				if (typeof(data.angle) == 'undefined') {
 					log('Error: Missing message param: angle');
 					return;
@@ -113,6 +117,7 @@ server.on('connection', function connection(connection) {
 
 				var turbo = (data.turbo == true);
 				var fire = (data.fire == true);
+				var explode = (data.explode == true);
 				var accel = parseFloat(data.accel);
 				var angle = parseFloat(data.angle);
 
@@ -129,9 +134,8 @@ server.on('connection', function connection(connection) {
 				connection.player.accel = accel;
 				connection.player.turbo = turbo;
 				connection.player.fire = fire;
+				connection.player.explode = explode;
 				connection.player.angle = angle;
-
-				clientUpdateNeeded = true;
 
 				break;
 			default:
@@ -142,6 +146,9 @@ server.on('connection', function connection(connection) {
 	connection.on('close', function close() {
 		if (connection.player) {
 			log('Client "' + connection.player.name + '" disconnected.');
+			connection.player.speed = 40;
+			spawnPart(connection.player, connection.player.mass, 10, 360);
+			players.splice(players.indexOf(connection.player), 1);
 		} else {
 			log('Unkown client disconnected.');
 		}	    
@@ -155,6 +162,12 @@ server.on('connection', function connection(connection) {
  */
 function gameLoop()
 {
+	// If there are no clients connected do not let the bots play
+	if (server.clients.length == 0) {
+		setTimeout(gameLoop, 30);
+		return;
+	}
+
 	var player;
 
 	players.forEach(function(player)
@@ -162,6 +175,13 @@ function gameLoop()
 		if (player.fire && Date.now() - player.lastFire > 250 && player.mass >= 2 * startMass) {
 			player.lastFire = Date.now();
 			spawnProjectilePart(player);
+		}
+
+		if (player.explode && Date.now() - player.lastExplode > 250 && player.mass >= 4 * startMass) {
+			var mass = 0.75 * player.mass;
+			player.speed = 60;
+			player.lastExplode = Date.now();
+			spawnPart(player, mass, getRandomInt(3, 7), 270);
 		}
 
 		var moveDistance = (player.speed + player.accel * 10) / (Math.log(player.mass * massMultiplier) / Math.log(10));
@@ -179,9 +199,7 @@ function gameLoop()
 		}
 
 		// Move player
-		if (player.speed || player.accel) {
-			clientUpdateNeeded = true;
-			
+		if (player.speed || player.accel) {	
 			player.x = Math.round(Math.cos(player.angle * Math.PI / 180) * moveDistance + player.x);
 			player.y = Math.round(Math.sin(player.angle * Math.PI / 180) * moveDistance + player.y);
 
@@ -204,7 +222,7 @@ function gameLoop()
 			// Check collision with other player parts
 			playerRadius = getRadiusByArea(player.mass);
 			for (var i = 0; i < parts.length; i++) {
-				if (player.index == parts[i].playerIndex) {
+				if (player.id == parts[i].playerId) {
 					continue;
 				}
 				//var partRadius = getRadiusByArea(parts[i].mass);
@@ -213,7 +231,7 @@ function gameLoop()
 					if (parts[i].projectile) {
 						spawnDebrisPart(player, parts[i]);
 						if (player.mass < 0.5 * startMass) {
-							spawnPlayer(player.index);
+							spawnPlayer(player.id);
 						}
 					} else {
 						player.mass += parts[i].mass;
@@ -228,19 +246,20 @@ function gameLoop()
 			for (var i = 0; i < planetoids.length; i++) {
 				var distance = getDistance(player.x, player.y, planetoids[i].x, planetoids[i].y);
 
-				if (distance <= planetoidsRadius) {
-					if (planetoidsRadius >= playerRadius) {
-						player.isSave = true;
-					} else {
-						spawnCollisionPart(player, planetoids[i], planetoidsMass);
-					}
+				if (planetoidsRadius >= playerRadius && distance <= planetoidsRadius) {
+					player.isSave = true;
+					break;
+				}
+
+				if (planetoidsRadius < playerRadius && distance <= playerRadius) {
+					spawnCollisionPart(player, planetoids[i], planetoidsMass);
 					break;
 				}
 			}
 
 			// Check collision with other players
 			for (var i = 0; i < players.length; i++) {
-				if (i == player.index) {
+				if (players[i].id == player.id) {
 					continue;
 				}
 				var distance = getDistance(player.x, player.y, players[i].x, players[i].y);
@@ -248,24 +267,19 @@ function gameLoop()
 					&& player.mass * massKillFactor >= players[i].mass && ! players[i].isSave)
 				{
 					player.mass += players[i].mass;
-					spawnPlayer(i);
+					spawnPlayer(players[i].id);
 				}
 				if (distance < getRadiusByArea(players[i].mass) 
 					&& players[i].mass * massKillFactor >= player.mass && ! player.isSave)
 				{
 					players[i].mass += player.mass;
-					spawnPlayer(player.index);
+					spawnPlayer(player.id);
 				}
 			};
 		}
 
 		// Calculate mass
-		var massRounded = Math.round(player.mass);
-		player.mass = player.mass * 0.99987;
-
-		if (Math.round(player.mass) != massRounded) {
-			clientUpdateNeeded = true;
-		}
+		player.mass *= massConsumption;
 	});
 
 	parts.forEach(function(part)
@@ -274,11 +288,12 @@ function gameLoop()
 		if (part.speed < 0) {
 			part.speed = 0;
 		}
+		if (part.speed < 1) {
+			part.projectile = false;
+		}
 
-		// Move player
-		if (part.speed) {
-			clientUpdateNeeded = true;
-			
+		// Move part
+		if (part.speed) {	
 			part.x = Math.round(Math.cos(part.angle * Math.PI / 180) * part.speed + part.x);
 			part.y = Math.round(Math.sin(part.angle * Math.PI / 180) * part.speed + part.y);
 
@@ -286,6 +301,10 @@ function gameLoop()
 			if (part.y < 0) part.y = 0;
 			if (part.x > field.sizeX) part.x = field.sizeX;
 			if (part.y > field.sizeY) part.y = field.sizeY;
+		}
+
+		if (part.mass >= 0.1 * startMass) {
+			part.mass *= 0.998;
 		}
 	});
 
@@ -338,16 +357,14 @@ function gameLoop()
 		}
 	});
 
-	if (clientUpdateNeeded) {
-		server.clients.forEach(function each(client) {
-			client.send(JSON.stringify(game), function(error)
-			{
-				if (error) log(error);
-			});
+	server.clients.forEach(function each(client) {
+		client.send(JSON.stringify(game), function(error)
+		{
+			if (error) {
+				log('Error: Error occured when sending data to client.');
+			}
 		});
-
-		clientUpdateNeeded = false;
-	}
+	});
 
 	setTimeout(gameLoop, 30);
 }
@@ -366,17 +383,17 @@ function addBot(type)
 /**
  * Spawns a player
  * 
- * @param  {Integer} index Optional: The index of an existing player
+ * @param  {Integer} id Optional: The id of an existing player
  * @param  {Integer} name Optional: The name of a new player
  */
-function spawnPlayer(index, name)
+function spawnPlayer(id, name)
 {
 	var color = getRandomColor();
 	var player;
 
-	if (typeof(index) == 'undefined' || index === null) {
+	if (typeof(id) == 'undefined' || id === null) {
 		player = {
-			index: players.length,
+			id: ++lastPlayerId,
 			x: getRandomInt(0, field.sizeX), 
 			y: getRandomInt(0, field.sizeY),
 			color: color,
@@ -385,6 +402,7 @@ function spawnPlayer(index, name)
 			name: name,
 			angle: getRandomInt(0, 360),
 			lastTurbo: 0,
+			lastExplode: 0,
 			lastFire: 0,
 			speed: 0,
 			accel: 0,
@@ -392,7 +410,7 @@ function spawnPlayer(index, name)
 
 		players.push(player);
 	} else {
-		player = players[index];
+		player = getPlayerById(id);
 
 		player.x = getRandomInt(0, field.sizeX);
 		player.y = getRandomInt(0, field.sizeY);
@@ -401,20 +419,19 @@ function spawnPlayer(index, name)
 		player.mass = startMass;
 		player.angle = getRandomInt(0, 360);
 		player.lastTurbo = 0;
+		player.lastExplode = 0;
 		player.lastFire = 0;
 		player.speed = 0;
 		player.accel = 0;
 
 		bots.some(function(bot)
 		{
-			if (bot.player.index == index) {
+			if (id == bot.player.id) {
 				bot = { type: bot.type, player: bot.player };
 				return true; // Break the forEach-loop
 			}
 		});
 	}
-
-	clientUpdateNeeded = true;
 }
 
 /**
@@ -449,7 +466,7 @@ function spawnPlanetoid()
 	planetoids.push(planetoid);
 }
 
-function spawnPart(player, mass, amount)
+function spawnPart(player, mass, amount, maxAngle)
 {
 	if (typeof(amount) == 'undefined' || amount < 1) {
 		amount = 1;
@@ -457,14 +474,17 @@ function spawnPart(player, mass, amount)
 	if (typeof(mass) == 'undefined' || mass < 1 || mass > player.mass) {
 		mass = 0.33 * player.mass;
 	}
+	if (typeof(maxAngle) == 'undefined' || maxAngle < 0) {
+		maxAngle = 60;
+	}
 
 	player.mass -= mass;
 
 	var radius = getRadiusByArea(player.mass);
 
 	for (var i = 0; i < amount; i++) {
-		var angle = (player.angle - 180) % 360; // Backwards
-		angle = angle - getRandomInt(0, 60) + 30;
+		var angle = (player.angle + 180) % 360; // Backwards
+		angle = angle - getRandomInt(0, maxAngle) + 0.5 * maxAngle;
 		if (angle < 0) angle += 360;
 		if (angle > 360) angle -= 360;
 
@@ -472,7 +492,8 @@ function spawnPart(player, mass, amount)
 			x: player.x - radius + getRandomInt(0, radius * 2),
 			y: player.y - radius + getRandomInt(0, radius * 2), 
 			mass: mass / amount,
-			playerIndex: player.index,
+			playerId: player.id,
+			color: player.color,
 			angle: angle,
 			speed: player.speed,
 			projectile: false,
@@ -490,7 +511,8 @@ function spawnProjectilePart(player)
 		x: player.x,
 		y: player.y, 
 		mass: mass,
-		playerIndex: player.index,
+		playerId: player.id,
+		color: player.color,
 		angle: player.angle,
 		speed: Math.max(40, player.speed + 10),
 		projectile: true,
@@ -507,8 +529,9 @@ function spawnDebrisPart(player, part)
 		extraMass += Math.max(0, player.mass);
 	}
 
-	part.mass *= 1.5;
-	part.playerIndex = player.index;
+	part.mass *= 2;
+	part.playerId = player.id;
+	part.color = player.color;
 	//part.speed *= 0.75;
 	part.projectile = false;
 	part.angle = getAngle(player.x, player.y, part.x, part.y);
@@ -534,18 +557,35 @@ function spawnCollisionPart(player, object, objectMass) {
 				x: object.x,
 				y: object.y, 
 				mass: mass / 5,
-				playerIndex: player.index,
-				angle: addAngle(angle, getRandomInt(-45, 45)),
-				speed: 20,
+				playerId: player.id,
+				color: player.color,
+				angle: addAngle(angle, getRandomInt(-60, 60)),
+				speed: getRandomInt(15, 25),
 				projectile: false,
 			}
 			parts.push(part);
 		}
 	}
 
-	if (player.mass < 0.5 * startMass) {
-		spawnPlayer(player.index);
+	if (player.mass < 0.2 * startMass) {
+		spawnPlayer(player.id);
 	}
+}
+
+/**
+ * Returns the player object with the given ID
+ * 
+ * @param  {[type]} id The ID of the player
+ * @return {Object}    The player object
+ */
+function getPlayerById(id)
+{
+	for (var i = 0; i < players.length; i++) {
+		if (players[i].id == id) {
+			return players[i];
+		}
+	}
+	return null;
 }
 
 /**

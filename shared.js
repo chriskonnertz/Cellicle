@@ -157,6 +157,7 @@ addAngle = function(angle1, angle2)
 
 version 				= 0.1 // Version for both the server and the client - they have to match.
 massMultiplier 			= 0.005; // Player mass multiplier (to calculate a more readable mass)
+massConsumption 		= 0.99987; // Multiplier: How much mass is (not) consumed per tick?
 startMass 				= 2000; // Player start mass
 asteroidsRadius 		= 12;
 asteroidsMass 			= 200;
