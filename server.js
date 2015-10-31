@@ -8,10 +8,10 @@ var WebSocketServer = require('ws').Server;
 var server = new WebSocketServer({ port: 8080 });
 
 var game = {
-	type: 'game',
+	t: 'g', // type: game
 	field: {
-		sizeX: 3000 * 0.3,
-		sizeY: 2000 * 0.3,
+		sizeX: 3000,
+		sizeY: 2000,
 	},
 	players: [],
 	asteroids: [],
@@ -34,18 +34,18 @@ for (var i = field.sizeX * field.sizeY / 50000; i >= 0; i--) {
 for (var i = 0; i < asteroids.length / 20; i++) {
 	spawnPlanetoid();
 };
-/*
-addBot('Random');
-addBot('Random');
-addBot('Random');
-addBot('Random');
-addBot('Gatherer');
-addBot('Gatherer');
-addBot('Gatherer');
-addBot('Gatherer');
-addBot('Gatherer');
-addBot('Gatherer');
-*/
+
+addBot('Randy Random');
+addBot('Randy Random');
+addBot('Randy Random');
+addBot('Randy Random');
+addBot('Garry Gatherer');
+addBot('Garry Gatherer');
+addBot('Garry Gatherer');
+addBot('Garry Gatherer');
+addBot('Garry Gatherer');
+addBot('Garry Gatherer');
+
 setTimeout(gameLoop, 30);
 
 server.on('connection', function connection(connection) {
@@ -59,12 +59,12 @@ server.on('connection', function connection(connection) {
 			return;
 		}
 
-		if (! data.type) {
+		if (! data.t) {
 			log('Error: Missing message param: type.');
 			return;
 		}
 
-		switch (data.type) {
+		switch (data.t) {
 			case 'auth':
 				if (! data.name) {
 					log('Error: Missing message param: name');
@@ -80,7 +80,7 @@ server.on('connection', function connection(connection) {
 
 				if (data.version != version) {
 					log('Client "' + data.name + '" has a different version: ' + data.version);
-					connection.send(JSON.stringify({ type: 'version', version: version }));
+					connection.send(JSON.stringify({ t: 'v', v: version }));
 					return;
 				}
 
@@ -88,38 +88,38 @@ server.on('connection', function connection(connection) {
 
 				connection.player = players[players.length - 1];
 
-				connection.send(JSON.stringify({ type: 'init', playerId: connection.player.id }));
+				connection.send(JSON.stringify({ t: 'i', pid: connection.player.id }));
 
 				log('Client "' + connection.player.name + '" authenticated.');
 
 				break;
 			case 'input':
-				if (typeof(data.accel) == 'undefined') {
+				if (typeof(data.a) == 'undefined') {
 					log('Error: Missing message param: accel');
 					return;
 				}
-				if (typeof(data.turbo) == 'undefined') {
+				if (typeof(data.t) == 'undefined') {
 					log('Error: Missing message param: turbo');
 					return;
 				}
-				if (typeof(data.fire) == 'undefined') {
+				if (typeof(data.f) == 'undefined') {
 					log('Error: Missing message param: fire');
 					return;
 				}
-				if (typeof(data.explode) == 'undefined') {
+				if (typeof(data.e) == 'undefined') {
 					log('Error: Missing message param: explode');
 					return;
 				}
-				if (typeof(data.angle) == 'undefined') {
+				if (typeof(data.an) == 'undefined') {
 					log('Error: Missing message param: angle');
 					return;
 				}
 
-				var turbo = (data.turbo == true);
-				var fire = (data.fire == true);
-				var explode = (data.explode == true);
-				var accel = parseFloat(data.accel);
-				var angle = parseFloat(data.angle);
+				var turbo = (data.t == true);
+				var fire = (data.f == true);
+				var explode = (data.e == true);
+				var accel = parseFloat(data.a);
+				var angle = parseFloat(data.an);
 
 				if (accel < 0 || accel > 1) {
 					log('Error: Invalid message param: accel');
@@ -222,7 +222,7 @@ function gameLoop()
 			// Check collision with other player parts
 			playerRadius = getRadiusByArea(player.mass);
 			for (var i = 0; i < parts.length; i++) {
-				if (player.id == parts[i].playerId) {
+				if (player.id == parts[i].playerId && parts[i].speed > 0) {
 					continue;
 				}
 				//var partRadius = getRadiusByArea(parts[i].mass);
@@ -288,7 +288,7 @@ function gameLoop()
 		if (part.speed < 0) {
 			part.speed = 0;
 		}
-		if (part.speed < 1) {
+		if (part.speed == 0) {
 			part.projectile = false;
 		}
 
@@ -304,7 +304,7 @@ function gameLoop()
 		}
 
 		if (part.mass >= 0.1 * startMass) {
-			part.mass *= 0.998;
+			part.mass *= 0.999;
 		}
 	});
 
@@ -313,7 +313,7 @@ function gameLoop()
 		player = bot.player;
 
 		switch (bot.type) {
-			case 'Random':
+			case 'Randy Random':
 				if (typeof(bot.angle) == 'undefined' 
 					|| player.x < 100 || player.y < 100 || player.x > field.sizeX - 100 || player.y > field.sizeY - 100
 					|| Date.now() - bot.angleDuration > bot.angleSet) 
@@ -331,7 +331,7 @@ function gameLoop()
 				if (player.angle > 360) player.angle -= 360;
 
 				break;
-			case 'Gatherer':
+			case 'Garry Gatherer':
 				if (typeof(bot.asteroidIndex) == 'undefined' 
 					|| bot.asteroidX != asteroids[bot.asteroidIndex].x || bot.asteroidY != asteroids[bot.asteroidIndex].y) 
 				{
@@ -358,7 +358,72 @@ function gameLoop()
 	});
 
 	server.clients.forEach(function each(client) {
-		client.send(JSON.stringify(game), function(error)
+		// Client exists before initialization so we return if the player object does not exist yet
+		if (! client.player) {
+			return;
+		}
+
+		var me = client.player;
+		var clientGame = { t: 'g', f: { sx: field.sizeX, sy: field.sizeY } };
+
+		var clientPlayers = [];
+		players.forEach(function(player)
+		{
+			if (isVisible(me, player.x, player.y, getRadiusByArea(player.mass))) {
+				clientPlayers.push({
+					id: player.id,
+					x: player.x,
+					y: player.y,
+					m: player.mass,
+					c: player.color,
+					cd: player.colorDark,
+					an: player.angle,
+					n: player.name,
+				});
+			}
+		});
+		clientGame.p = clientPlayers;
+
+		var clientParts = [];
+		parts.forEach(function(part)
+		{
+			if (isVisible(me, part.x, part.y, getRadiusByArea(part.mass))) {
+				clientParts.push({
+					x: part.x,
+					y: part.y,
+					m: part.mass,
+					c: part.color,
+				});
+			}
+		});
+		clientGame.pa = clientParts;	
+
+		var clientAsteroids = [];
+		asteroids.forEach(function(asteroid)
+		{
+			if (isVisible(me, asteroid.x, asteroid.y, asteroidsRadius)) {
+				clientAsteroids.push({
+					x: asteroid.x,
+					y: asteroid.y,
+				});
+			}
+		});
+		clientGame.a = clientAsteroids;
+
+		var clientPlanetoids = [];
+		planetoids.forEach(function(planetoid, index)
+		{
+			if (isVisible(me, planetoid.x, planetoid.y, 1.1 * planetoidsRadius)) {
+				clientPlanetoids.push({
+					x: planetoid.x,
+					y: planetoid.y,
+					i: index,
+				});
+			}
+		});
+		clientGame.pl = clientPlanetoids;	
+
+		client.send(JSON.stringify(clientGame), function(error)
 		{
 			if (error) {
 				log('Error: Error occured when sending data to client.');
@@ -443,8 +508,7 @@ function spawnAsteroid(index)
 {
 	var asteroid = { 
 		x: getRandomInt(0, field.sizeX), 
-		y: getRandomInt(0, field.sizeY), 
-		radius: getRandomInt(10, 20),
+		y: getRandomInt(0, field.sizeY),
 	};
 
 	if (typeof(index) == 'undefined') {
@@ -504,7 +568,7 @@ function spawnPart(player, mass, amount, maxAngle)
 
 function spawnProjectilePart(player)
 {
-	var mass = 0.05 * player.mass;
+	var mass = Math.min(0.05 * player.mass, startMass);
 	player.mass -= mass;
 
 	var part = {
@@ -575,7 +639,7 @@ function spawnCollisionPart(player, object, objectMass) {
 /**
  * Returns the player object with the given ID
  * 
- * @param  {[type]} id The ID of the player
+ * @param  {Integer} id The ID of the player
  * @return {Object}    The player object
  */
 function getPlayerById(id)

@@ -53,6 +53,8 @@
 			var playerId;
 			var game;
 			var stars;
+			var traffic = 0; // Amount of (regular) incoming traffic sent this client
+			var startedAt = 0;
 
 			var polygonShapes = createPolygonShapes();
 
@@ -105,7 +107,7 @@
 								data = {};
 							}
 
-							data.type = type;
+							data.t = type;
 							dataString = JSON.stringify(data);
 
 							connection.send(dataString);
@@ -122,25 +124,27 @@
 					connection.onmessage = function (messageEvent) {
 						if (messageEvent.data) {
 							try {
+								traffic += messageEvent.data.length;
 								var data = JSON.parse(messageEvent.data);
 
-								switch (data.type) {
-									case 'init':
-										if (typeof(data.playerId) != 'undefined') {
-											playerId = data.playerId;
+								switch (data.t) {
+									case 'i': // init
+										if (typeof(data.pid) != 'undefined') {
+											playerId = data.pid;
 											stars = [];
 
 											$('#start').hide();	
+											startedAt = Date.now();
 											window.requestAnimationFrame(gameLoop);
 										} else {
 											console.log('Error: init data invalid.');
 										}
 										break;
-									case 'version':
-										alert('The server needs version ' + data.version + ' but you have ' + version 
+									case 'v': // version
+										alert('The server needs version ' + data.v + ' but you have ' + version 
 											+ '.\n\rThe server refused to establish the connection.');
 										break;
-									case 'game':
+									case 'g': // game
 										game = data;
 
 										if (! stars || stars.length == 0) {
@@ -172,11 +176,15 @@
 			});
 
 			$canvas.mousedown(function(event) {
-				mouse.click = true;
+				if (event.button == 0) {
+					mouse.click = true;
+				}
 			});
 
 			$canvas.mouseup(function(event) {
-				mouse.click = false;
+				if (event.button == 0) {
+					mouse.click = false;
+				}
 			});
 
 			$(window).keydown(function(event) {
@@ -188,7 +196,6 @@
 			});
 
 			$(window).resize(function(event) {
-				console.log('resized');
 				canvas.width  = window.innerWidth;
 				canvas.height = window.innerHeight;
 				createStarfield();
@@ -199,11 +206,15 @@
 			 */
 			function createStarfield()
 			{
+				if (! game) {
+					return;
+				}
+
 				stars = [];
-				for (var i = 0; i < game.field.sizeX * game.field.sizeY / 25000; i++) {
+				for (var i = 0; i < game.f.sx * game.f.sy / 25000; i++) {
 					var star = {
-						x: getRandomInt(-canvas.width / 2, game.field.sizeX + canvas.width),
-						y: getRandomInt(-canvas.height / 2, game.field.sizeY + canvas.height),
+						x: getRandomInt(-canvas.width / 2, game.f.sx + canvas.width),
+						y: getRandomInt(-canvas.height / 2, game.f.sy + canvas.height),
 					}
 					stars.push(star);
 				};
@@ -211,11 +222,11 @@
 
 			var gameLoop = function(timestamp)
 			{
-				// Client can receive updates before authentication finished!
+				// Client could receive updates before authentication finished!
 				if (game) {
 					var me = null;
 
-					game.players.some(function (player)
+					game.p.some(function (player)
 					{
 						if (player.id == playerId) {
 							me = player;
@@ -227,11 +238,11 @@
 						var distance = getDistance(canvas.width / 2, canvas.height / 2, mouse.x, mouse.y);
 
 						var data = { 
-							accel: Math.min(distance / 100, 1),
-							turbo: (keys.k32 == true), // Spacebar
-							explode: (keys.k69 == true), // e
-							fire: mouse.click,
-							angle: getAngle(canvas.width / 2, canvas.height / 2, mouse.x, mouse.y),
+							a: Math.min(distance / 100, 1),
+							t: (keys.k32 == true), // Spacebar
+							e: (keys.k69 == true), // e
+							f: mouse.click,
+							an: getAngle(canvas.width / 2, canvas.height / 2, mouse.x, mouse.y),
 						};
 						connection.sendData('input', data);
 					}
@@ -258,7 +269,7 @@
 				});
 
 				context.fillStyle = 'yellow';
-				game.asteroids.forEach(function(asteroid, index)
+				game.a.forEach(function(asteroid, index)
 				{
 					context.beginPath();
 					context.arc(asteroid.x - camera.x, asteroid.y - camera.y, asteroidsRadius, 0, 2 * Math.PI, false);
@@ -266,32 +277,32 @@
 					context.closePath();
 				});
 
-				game.parts.forEach(function(part, index)
+				game.pa.forEach(function(part, index)
 				{
-					var radius = getRadiusByArea(part.mass);
+					var radius = getRadiusByArea(part.m);
 					context.beginPath();
 					context.arc(part.x - camera.x, part.y - camera.y, radius, 0, 2 * Math.PI, false);
-					context.fillStyle = part.color;
+					context.fillStyle = part.c;
 					context.fill();
 					context.closePath();
 				});
 
-				game.players.forEach(function(player, index)
+				game.p.forEach(function(player, index)
 				{
-					var radius = getRadiusByArea(player.mass);
+					var radius = getRadiusByArea(player.m);
 					context.beginPath();
 					context.arc(player.x - camera.x, player.y - camera.y, radius, 0, 2 * Math.PI, true);
-					context.fillStyle = player.color;
+					context.fillStyle = player.c;
 					context.fill();
 					context.lineWidth = 7;
-					context.strokeStyle = player.colorDark;
+					context.strokeStyle = player.cd;
 					context.stroke();
 					context.closePath();
 
 					context.beginPath();
 					context.arc(player.x - camera.x, player.y - camera.y, radius, 
-						(player.angle / 360 * 2 * Math.PI) - 0.5, (player.angle / 360 * 2 * Math.PI) + 0.5, false);
-					context.strokeStyle = player.color;
+						(player.an / 360 * 2 * Math.PI) - 0.5, (player.an / 360 * 2 * Math.PI) + 0.5, false);
+					context.strokeStyle = player.c;
 					context.stroke();
 					context.closePath();
 
@@ -301,13 +312,14 @@
 					context.font = '16px Arial';
 					context.lineWidth = 1;
 					context.strokeStyle = 'black';
-					context.strokeText(player.name, player.x - camera.x, player.y - camera.y);
-					context.fillText(player.name, player.x - camera.x, player.y - camera.y);					
+					context.strokeText(player.n, player.x - camera.x, player.y - camera.y);
+					context.fillText(player.n, player.x - camera.x, player.y - camera.y);					
 				});
 
 				context.fillStyle = '#666';
-				game.planetoids.forEach(function(planetoid, index)
+				game.pl.forEach(function(planetoid)
 				{
+					var index = planetoid.i; // Server side index
 					var shape = polygonShapes[index % polygonShapes.length];
 
 					context.beginPath();
@@ -325,7 +337,7 @@
 					context.fillStyle = '#ddd';
 					context.textAlign = 'left';
 					context.textBaseline = 'top';
-					context.fillText('Mass: ' + Math.round(me.mass * massMultiplier), 10, 10);
+					context.fillText('Mass: ' + Math.round(me.m * massMultiplier), 10, 10);
 				}
 			}
 

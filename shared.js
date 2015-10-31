@@ -155,6 +155,29 @@ addAngle = function(angle1, angle2)
 	return angle;
 }
 
+/**
+ * Checks if a player can see an object
+ * 
+ * @param  {Integer}  player The player object with x and y attributes
+ * @param  {Integer}  x      The x position of the other object
+ * @param  {Integer}  y      The y position of the other object
+ * @param  {Integer}  radius The radius of the other object
+ * @return {Boolean}
+ */
+isVisible = function(player, x, y, radius)
+{
+	var width = 2000;
+	var height = 1100;
+
+	return (player.x + 0.5 * width >= x - 0.5 * radius && player.x - 0.5 * width <= x + 0.5 * radius &&
+		player.y + 0.5 * height >= y - 0.5 * radius && player.y - 0.5 * height <= y + 0.5 * radius);
+}
+
+calcTrafficPerSecond = function(traffic, startedAt)
+{
+	return traffic / ((Date.now() - startedAt) / 1000);
+}
+
 version 				= 0.1 // Version for both the server and the client - they have to match.
 massMultiplier 			= 0.005; // Player mass multiplier (to calculate a more readable mass)
 massConsumption 		= 0.99987; // Multiplier: How much mass is (not) consumed per tick?
