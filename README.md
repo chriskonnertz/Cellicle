@@ -2,7 +2,7 @@
 
 **2D Browsergame, Agar.io clone, NodeJS, Real-time**
 
-![Screenshot of the game](http://ckonnertz.fasthp.de/cellicle/cellicle.jpg)
+![Screenshot of the game](cellicle.jpg)
 
 This is a simple 2D browser game build with NodeJS (server side) and JavaScript in general.
 
