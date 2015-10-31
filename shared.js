@@ -145,6 +145,13 @@ compareAngles = function(angle1, angle2)
 	}
 }
 
+/**
+ * Adds angle2 to angle1 and returns the new angle.
+ * Both angles are allowed to be < 0 or > 360.
+ * 
+ * @param {Integer} angle1 The first angle
+ * @param {Integer} angle2 The second angle
+ */
 addAngle = function(angle1, angle2)
 {
 	var angle = angle1 + angle2;
