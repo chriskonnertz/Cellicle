@@ -3,6 +3,7 @@ var fs     		= require('fs');
 var util 		= require('util');
 
 require('./shared.js');
+require('./server_config.js');
 
 var WebSocketServer = require('ws').Server;
 var server = new WebSocketServer({ port: 8080 });
@@ -84,6 +85,12 @@ server.on('connection', function connection(connection) {
 					return;
 				}
 
+				if (server.clients.length > serverConfig.maxClients) {
+					log('Error: Client tried to auth but server is full.');
+					connection.send(JSON.stringify({ t: 'f', mc: serverConfig.maxClients }));
+					return;
+				}
+
 				spawnPlayer(null, data.name);
 
 				connection.player = players[players.length - 1];
@@ -136,6 +143,36 @@ server.on('connection', function connection(connection) {
 				connection.player.fire = fire;
 				connection.player.explode = explode;
 				connection.player.angle = angle;
+
+				break;
+			case 'rcon':
+				if (! serverConfig.rconPassword) {
+					log('Warning: Client attempted to execute rcon command, but no rcon password is set.');
+					return;
+				}
+
+				if (typeof(data.rp) == 'undefined') {
+					log('Error: Missing message param: rcon password');
+					return;
+				}
+				if (typeof(data.c) == 'undefined') {
+					log('Error: Missing message param: command');
+					return;
+				}
+
+				if (data.rp !== serverConfig.rconPassword) {
+					log('Warning: Wrong rcon password.');
+					return;
+				}
+
+				switch (data.c) {
+					case 'shutdown':
+						log('Server shutdown.');
+						process.exit(1); 
+						break;
+					default:
+						log('Warning: Unkown rcon command.');
+				}
 
 				break;
 			default:

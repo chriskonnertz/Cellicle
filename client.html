@@ -55,6 +55,7 @@
 			var stars;
 			var traffic = 0; // Amount of (regular) incoming traffic sent this client
 			var startedAt = 0;
+			var rconPassword = '';
 
 			var polygonShapes = createPolygonShapes();
 
@@ -144,6 +145,9 @@
 										alert('The server needs version ' + data.v + ' but you have ' + version 
 											+ '.\n\rThe server refused to establish the connection.');
 										break;
+									case 'f': // max clients reached
+										alert('The server is full!\n\rThe server refused to establish the connection.');
+										break;											
 									case 'g': // game
 										game = data;
 
@@ -189,6 +193,18 @@
 
 			$(window).keydown(function(event) {
 				keys['k' + event.keyCode] = true;
+
+				if (event.keyCode == 67) { // c
+					if (! rconPassword) {
+						rconPassword = prompt('Please enter the rcon password of the server:');
+					}
+					if (rconPassword && connection) {
+						var command = prompt('Please enter the rcon command:');
+						if (command) {
+							connection.sendData('rcon', { rp: rconPassword, c: command });
+						}						
+					}
+				}
 			});
 
 			$(window).keyup(function(event) {
