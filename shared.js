@@ -163,6 +163,25 @@ addAngle = function(angle1, angle2)
 }
 
 /**
+ * Calculates the (positive) difference between two angles
+ * 
+ * @param {Integer} angle1 The first angle
+ * @param {Integer} angle2 The second angle
+ * @return {Integer}       The difference
+ */
+getAngleDiff = function(angle1, angle2) {
+	var diff = angle1 - angle2;
+
+	diff = Math.abs(diff);
+
+	if (diff > 180) {
+		diff = 360 - diff;
+	}
+
+	return diff;
+}
+
+/**
  * Checks if a player can see an object
  * 
  * @param  {Integer}  player The player object with x and y attributes
@@ -185,12 +204,12 @@ calcTrafficPerSecond = function(traffic, startedAt)
 	return traffic / ((Date.now() - startedAt) / 1000);
 }
 
-version 				= 0.5 // Version for both the server and the client - they have to match.
+version 				= 0.5; // Version for both the server and the client - they have to match.
 massMultiplier 			= 0.005; // Player mass multiplier (to calculate a more readable mass)
 massConsumption 		= 0.99987; // Multiplier: How much mass is (not) consumed per tick?
 startMass 				= 2000; // Player start mass
 asteroidsRadius 		= 12;
 asteroidsMass 			= 200;
-massKillFactor			= 1.3 // Client A has to be this factor bigger then B to eat B
+massKillFactor			= 1.3; // Client A has to be this factor bigger then B to eat B
 planetoidsRadius		= 70; // Radius (size) of the planetoids
 planetoidsMass 			= getAreaByRadius(planetoidsRadius);

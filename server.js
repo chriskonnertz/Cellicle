@@ -27,6 +27,7 @@ var planetoids = game.planetoids;
 var parts = game.parts;
 var bots = [];
 var lastPlayerId = 0;
+var lastPartId = 0;
 
 for (var i = field.sizeX * field.sizeY / 50000; i >= 0; i--) {
 	spawnAsteroid();
@@ -39,13 +40,19 @@ for (var i = 0; i < asteroids.length / 20; i++) {
 addBot('Randy Random');
 addBot('Randy Random');
 addBot('Randy Random');
-addBot('Randy Random');
+addBot('Faith Farmer');
+addBot('Faith Farmer');
+addBot('Faith Farmer');
+addBot('Faith Farmer');
+addBot('Faith Farmer');
 addBot('Garry Gatherer');
 addBot('Garry Gatherer');
 addBot('Garry Gatherer');
 addBot('Garry Gatherer');
-addBot('Garry Gatherer');
-addBot('Garry Gatherer');
+addBot('Hayley Hunter');
+addBot('Hayley Hunter');
+addBot('Hayley Hunter');
+addBot('Hayley Hunter');
 
 setTimeout(gameLoop, 30);
 
@@ -75,9 +82,15 @@ server.on('connection', function connection(connection) {
 					log('Error: Missing message param: version');
 					return;
 				}
+				if (typeof(data.spectator) == 'undefined') {
+					log('Error: Missing message param: spectator');
+					return;
+				}
 
 				data.name = data.name.replace('[', '(');
 				data.name = data.name.replace(']', ')');
+
+				connection.spectator = (data.spectator == true);
 
 				if (data.version != version) {
 					log('Client "' + data.name + '" has a different version: ' + data.version);
@@ -91,16 +104,26 @@ server.on('connection', function connection(connection) {
 					return;
 				}
 
-				spawnPlayer(null, data.name);
+				if (! connection.spectator) {
+					spawnPlayer(null, data.name);
+				} else {
+					if (players.length == 0) {
+						log('Error: Client tried to spectate but server is empty.');
+						connection.send(JSON.stringify({ t: 'e' }));
+						return;
+					}
+				}
 
 				connection.player = players[players.length - 1];
-
 				connection.send(JSON.stringify({ t: 'i', pid: connection.player.id }));
 
 				log('Client "' + connection.player.name + '" authenticated.');
 
 				break;
 			case 'input':
+				if (connection.spectator) {
+					return; // Simply ignore these kind of messages
+				}
 				if (typeof(data.a) == 'undefined') {
 					log('Error: Missing message param: accel');
 					return;
@@ -122,7 +145,7 @@ server.on('connection', function connection(connection) {
 					return;
 				}
 
-				var turbo = (data.t == true);
+				var turbo = (data.tu == true);
 				var fire = (data.f == true);
 				var explode = (data.e == true);
 				var accel = parseFloat(data.a);
@@ -144,6 +167,25 @@ server.on('connection', function connection(connection) {
 				connection.player.explode = explode;
 				connection.player.angle = angle;
 
+				break;
+			case 'alter':
+				if (connection.spectator) {
+					var index = 0;
+					for (var i = 0; i < players.length; i++) {
+						if (players[i].id == connection.player.id) {
+							if (i < players.length - 1) {
+								index = i + 1;
+							}
+							break;
+						}
+					}
+					if (players[index]) {
+						connection.player = players[index];
+						connection.send(JSON.stringify({ t: 's', pid: connection.player.id }));
+					}
+				} else {
+					log('Warning: Client attempted to change specated player but is not specator.');
+				}
 				break;
 			case 'rcon':
 				if (! serverConfig.rconPassword) {
@@ -171,7 +213,7 @@ server.on('connection', function connection(connection) {
 						process.exit(1); 
 						break;
 					default:
-						log('Warning: Unkown rcon command.');
+						log('Warning: Unknown rcon command.');
 				}
 
 				break;
@@ -209,25 +251,18 @@ function gameLoop()
 
 	players.forEach(function(player)
 	{
-		if (player.fire && Date.now() - player.lastFire > 250 && player.mass >= 2 * startMass) {
-			player.lastFire = Date.now();
-			spawnProjectilePart(player);
+		if (player.fire) {
+			tryFire(player);
 		}
 
-		if (player.explode && Date.now() - player.lastExplode > 250 && player.mass >= 4 * startMass) {
-			var mass = 0.75 * player.mass;
-			player.speed = 60;
-			player.lastExplode = Date.now();
-			spawnPart(player, mass, getRandomInt(3, 7), 270);
+		if (player.explode) {
+			tryExplode(player);
 		}
 
 		var moveDistance = (player.speed + player.accel * 10) / (Math.log(player.mass * massMultiplier) / Math.log(10));
 
-		if (player.turbo && Date.now() - player.lastTurbo > 250 && player.mass >= 2 * startMass) {
-			var mass = 0.33 * player.mass;
-			player.speed = 40;
-			player.lastTurbo = Date.now();
-			spawnPart(player, mass, getRandomInt(3, 7));
+		if (player.turbo) {
+			tryTurbo(player);
 		}
 
 		player.speed -= 2;
@@ -301,13 +336,13 @@ function gameLoop()
 				}
 				var distance = getDistance(player.x, player.y, players[i].x, players[i].y);
 				if (distance < getRadiusByArea(player.mass) 
-					&& player.mass * massKillFactor >= players[i].mass && ! players[i].isSave)
+					&& player.mass >= players[i].mass * massKillFactor && ! players[i].isSave)
 				{
 					player.mass += players[i].mass;
 					spawnPlayer(players[i].id);
 				}
 				if (distance < getRadiusByArea(players[i].mass) 
-					&& players[i].mass * massKillFactor >= player.mass && ! player.isSave)
+					&& players[i].mass >= player.mass * massKillFactor && ! player.isSave)
 				{
 					players[i].mass += player.mass;
 					spawnPlayer(player.id);
@@ -363,32 +398,162 @@ function gameLoop()
 					player.accel = 1;
 				}
 
-				player.angle += compareAngles(bot.angle, player.angle) * 15;
+				player.angle += compareAngles(bot.angle, player.angle) * Math.min(15, getAngleDiff(bot.angle, player.angle));
 				if (player.angle < 0) player.angle += 360;
 				if (player.angle > 360) player.angle -= 360;
 
 				break;
-			case 'Garry Gatherer':
-				if (typeof(bot.asteroidIndex) == 'undefined' 
-					|| bot.asteroidX != asteroids[bot.asteroidIndex].x || bot.asteroidY != asteroids[bot.asteroidIndex].y) 
+			default:
+				// Check start eating
+				if (typeof(bot.mode) == 'undefined' || bot.mode === null
+					|| (bot.target == 'asteroid' && bot.targetSpawnCounter != asteroids[bot.targetIndex].spawnCounter)
+					|| (bot.target == 'part' && (! parts[bot.targetIndex] || bot.targetId != parts[bot.targetIndex].id)))
 				{
+					bot.mode = 'eat';
+					bot.target = null;
+
 					var min = -1;
-					for (var i = 0; i < asteroids.length; i++) {
-						var distance = getDistance(player.x, player.y, asteroids[i].x, asteroids[i].y);
-						if (min == -1 || distance < min) {
-							bot.asteroidIndex = i;
-							bot.asteroidX = asteroids[i].x;
-							bot.asteroidY = asteroids[i].y;
+					for (var i = 0; i < parts.length; i++) {
+						if (parts[i].speed > 0) {
+							continue;
+						}
+
+						var distance = getDistance(player.x, player.y, parts[i].x, parts[i].y);
+						if (distance < 800 && (min == -1 || distance < min)) {
+							bot.target = 'part';
+							bot.targetIndex = i;
+							bot.targetId = parts[i].id;
 							min = distance;
 						}
 					}
-					player.accel = 1;
+
+					if (! bot.target) {
+						bot.target = 'asteroid';
+						var min = -1;
+						for (var i = 0; i < asteroids.length; i++) {
+							var distance = getDistance(player.x, player.y, asteroids[i].x, asteroids[i].y);
+							if (min == -1 || distance < min) {
+								bot.targetIndex = i;
+								bot.targetSpawnCounter = asteroids[i].spawnCounter;
+								min = distance;
+							}
+						}
+					}
 				}
 
-				bot.angle = getAngle(player.x, player.y, bot.asteroidX, bot.asteroidY);
-				player.angle += compareAngles(bot.angle, player.angle) * 15;
-				if (player.angle < 0) player.angle += 360;
-				if (player.angle > 360) player.angle -= 360;
+				// Check start escaping/hunting
+				if (bot.mode == 'eat') {
+					var radius = getRadiusByArea(player.mass);
+					for (var i = 0; i < players.length; i++) {
+						if (players[i].id  == player.id) {
+							continue;
+						}
+						var distance = getDistance(player.x, player.y, players[i].x, players[i].y);
+
+						if (bot.mode != 'escape' && bot.type != 'Faith Farmer' 
+							&& player.mass >= players[i].mass * massKillFactor
+							&& ! players[i].isSave && player.mass >= 2 * startMass
+							&& (distance < radius + 150 || (bot.type == 'Hayley Hunter' && distance < radius + 300)) 
+							&& (bot.target != 'part' || parts[bot.targetIndex].mass < players[i].mass)) 
+						{
+							var angle = getAngle(players[i].x, players[i].y, player.x, player.x);
+							if (getAngleDiff(angle, players[i].angle) <= 90) {
+								bot.mode = 'hunt';
+								bot.target = 'player';
+								bot.targetId = players[i].id;
+								bot.targetLife = players[i].life;
+								bot.huntStartedAt = Date.now();
+							}
+						} 
+
+						if (! player.isSave && players[i].mass >= player.mass* massKillFactor &&
+							distance < getRadiusByArea(players[i].mass) + 150) 
+						{
+							bot.mode = 'escape';
+							bot.angle = getAngle(players[i].x, players[i].y, player.x, player.y);
+							bot.escapeUntil = Date.now() + 2000;
+							bot.targetId = players[i].id;
+							bot.targetLife = players[i].life;
+
+							if (player.y < 300 && player.y < players[i].y && player.x > players[i].x) bot.angle = 45;
+							if (player.y < 300 && player.y < players[i].y && player.x <= players[i].x) bot.angle = 135;
+							if (player.y > field.sizeY - 300 && player.y > players[i].y && player.x > players[i].x) bot.angle = 315;
+							if (player.y > field.sizeY - 300 && player.y > players[i].y && player.x <= players[i].x) bot.angle = 225;
+							if (player.x < 300 && player.x < players[i].x && player.y > players[i].y) bot.angle = 45;
+							if (player.x < 300 && player.x < players[i].x && player.y <= players[i].y) bot.angle = 315;
+							if (player.x > field.sizeX - 300 && player.x > players[i].x && player.y > players[i].y) bot.angle = 135;
+							if (player.x > field.sizeX - 300 && player.x > players[i].x && player.y <= players[i].y) bot.angle = 225;
+						}
+					}
+				}
+
+				// Eat
+				if (bot.mode == 'eat') {
+					player.accel = 1;
+
+					if (bot.target == 'asteroid') {
+						bot.angle = getAngle(player.x, player.y, asteroids[bot.targetIndex].x, asteroids[bot.targetIndex].y);
+					}
+					if (bot.target == 'part') {
+						bot.angle = getAngle(player.x, player.y, parts[bot.targetIndex].x, parts[bot.targetIndex].y);	
+					}
+
+					player.angle += compareAngles(bot.angle, player.angle) * Math.min(15, getAngleDiff(bot.angle, player.angle));
+					if (player.angle < 0) player.angle += 360;
+					if (player.angle > 360) player.angle -= 360;
+				}
+
+				// Hunt
+				if (bot.mode == 'hunt') {
+					var target = getPlayerById(bot.targetId);
+
+					if (target && bot.targetLife == target.life
+						&& ! target.isSave && player.mass >= target.mass * massKillFactor
+						&& Date.now() - bot.huntStartedAt < 3000 // (It's possible that the hunt restarts immediately)
+						&& getDistance(player.x, player.y, target.x, target.y) < getRadiusByArea(player.mass) + 300) 
+					{
+						player.accel = 1;
+
+						bot.angle = getAngle(player.x, player.y, target.x, target.y);
+
+						player.angle += compareAngles(bot.angle, player.angle) * Math.min(15, getAngleDiff(bot.angle, player.angle));
+						if (player.angle < 0) player.angle += 360;
+						if (player.angle > 360) player.angle -= 360;
+
+						if (bot.type == 'Hayley Hunter' && getAngleDiff(bot.angle, player.angle) < 10
+							&& target.mass > 0.2 * player.mass && target.mass > 3 * startMass) 
+						{
+							tryFire(player);	
+						}
+					} else {
+						bot.mode = null;
+					}
+				}
+
+				// Escape
+				if (bot.mode == 'escape') {
+					player.accel = 1;
+
+					if (player.isSave) {
+						player.accel = 0;
+					} else {
+						var target = getPlayerById(bot.targetId);
+						if (target && bot.targetLife == target.life) {
+							var distance = getDistance(player.x, player.y, target.x, target.y);
+							if (distance < getRadiusByArea(target.mass) + 50) {
+								tryTurbo(player);
+							}
+						}
+
+						player.angle += compareAngles(bot.angle, player.angle) * Math.min(15, getAngleDiff(bot.angle, player.angle));
+						if (player.angle < 0) player.angle += 360;
+						if (player.angle > 360) player.angle -= 360;
+					}
+
+					if (Date.now() > bot.escapeUntil) {
+						bot.mode = null; // Stop escaping
+					}
+				}
 
 				break;
 		}
@@ -508,6 +673,7 @@ function spawnPlayer(id, name)
 			lastFire: 0,
 			speed: 0,
 			accel: 0,
+			life: 0,
 		};
 
 		players.push(player);
@@ -525,6 +691,7 @@ function spawnPlayer(id, name)
 		player.lastFire = 0;
 		player.speed = 0;
 		player.accel = 0;
+		player.life++;
 
 		bots.some(function(bot)
 		{
@@ -546,12 +713,15 @@ function spawnAsteroid(index)
 	var asteroid = { 
 		x: getRandomInt(0, field.sizeX), 
 		y: getRandomInt(0, field.sizeY),
+		spawnCounter: 1,
 	};
 
 	if (typeof(index) == 'undefined') {
 		asteroids.push(asteroid);
 	} else {
+		var spawnCounter = asteroids[index].spawnCounter + 1;
 		asteroids[index] = asteroid;
+		asteroids[index].spawnCounter = spawnCounter;
 	}
 }
 
@@ -598,6 +768,7 @@ function spawnPart(player, mass, amount, maxAngle)
 			angle: angle,
 			speed: player.speed,
 			projectile: false,
+			id: ++lastPartId,
 		}
 		parts.push(part);
 	};
@@ -617,6 +788,7 @@ function spawnProjectilePart(player)
 		angle: player.angle,
 		speed: Math.max(40, player.speed + 10),
 		projectile: true,
+		id: ++lastPartId,
 	}
 	parts.push(part);
 }
@@ -636,6 +808,7 @@ function spawnDebrisPart(player, part)
 	//part.speed *= 0.75;
 	part.projectile = false;
 	part.angle = getAngle(player.x, player.y, part.x, part.y);
+	part.id = ++lastPartId;
 }
 
 /**
@@ -663,6 +836,7 @@ function spawnCollisionPart(player, object, objectMass) {
 				angle: addAngle(angle, getRandomInt(-60, 60)),
 				speed: getRandomInt(15, 25),
 				projectile: false,
+				id: ++lastPartId,
 			}
 			parts.push(part);
 		}
@@ -670,6 +844,34 @@ function spawnCollisionPart(player, object, objectMass) {
 
 	if (player.mass < 0.2 * startMass) {
 		spawnPlayer(player.id);
+	}
+}
+
+function tryFire(player)
+{
+	if (Date.now() - player.lastFire > 250 && player.mass >= 2 * startMass) {
+		player.lastFire = Date.now();
+		spawnProjectilePart(player);
+	}
+}
+
+function tryExplode(player)
+{
+	if (Date.now() - player.lastExplode > 250 && player.mass >= 4 * startMass) {
+		var mass = 0.75 * player.mass;
+		player.speed = 60;
+		player.lastExplode = Date.now();
+		spawnPart(player, mass, getRandomInt(3, 7), 270);
+	}
+}
+
+function tryTurbo(player)
+{
+ 	if (Date.now() - player.lastTurbo > 250 && player.mass >= 2 * startMass) {
+		var mass = 0.33 * player.mass;
+		player.speed = 40;
+		player.lastTurbo = Date.now();
+		spawnPart(player, mass, getRandomInt(3, 7));
 	}
 }
 

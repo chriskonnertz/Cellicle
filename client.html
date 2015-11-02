@@ -14,7 +14,7 @@
 
 	<style type="text/css">
 		body { overflow: hidden; background-color: black; }
-		#start { position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; background-color: white; z-index: 999 }
+		#start { position: absolute; left: 0px; top: 0px; width: 100%; height: 100%; background-color: white; z-index: 999; overflow: auto; }
 		#start form { width: 300px; margin-left: auto; margin-right: auto; margin-top: 100px; }
 		#start label { color: #AAA; font-weight: bold }
 		#start input { margin-bottom: 20px; }
@@ -33,9 +33,13 @@
 				<label>Name:</label>
 				<input class="name" type="text">
 
+				<label for="spectator" class="pure-checkbox">
+					<input class="spectator" type="checkbox" value="1"> Spectator
+				</label>
+
 				<a class="pure-button pure-button-primary" href="#">Start</a>
 			</fieldset>
-			<p>Use the mouse to accelerate and change the direction of your movement. Press <code>space</code> to start you turbo to escape or hunt, and left click to shoot.</p>
+			<p>Use the mouse to accelerate and change the direction of your movement. Press <code>space</code> to start your turbo <code>e</code> to explode, and left click to shoot.</p>
 		</form>
 	</div>
 
@@ -56,6 +60,7 @@
 			var traffic = 0; // Amount of (regular) incoming traffic sent this client
 			var startedAt = 0;
 			var rconPassword = '';
+			var spectator = true;
 
 			var polygonShapes = createPolygonShapes();
 
@@ -85,8 +90,9 @@
 			$('#start a').click(function(event) {
 				event.preventDefault();
 
-				var name = $('#start .name').val();
-				var server = $('#start .server').val();
+				var name 		= $('#start .name').val();
+				var server 		= $('#start .server').val();
+				spectator 		= $('#start .spectator').get(0).checked;
 
 				if (name && server) {
 					localStorage.setItem('name', name);
@@ -118,7 +124,7 @@
 							console.log('WebSocket Error: ' + error);
 						};
 
-					  	connection.sendData('auth', {name: name, version: version});
+						connection.sendData('auth', {name: name, version: version, spectator: spectator});
 					};
 
 					// Handle incoming messages
@@ -141,12 +147,22 @@
 											console.log('Error: init data invalid.');
 										}
 										break;
+									case 's': // change spectated player
+										if (typeof(data.pid) != 'undefined') {
+											playerId = data.pid;
+										} else {
+											console.log('Error: data invalid.');
+										}
+										break;
 									case 'v': // version
 										alert('The server needs version ' + data.v + ' but you have ' + version 
 											+ '.\n\rThe server refused to establish the connection.');
 										break;
 									case 'f': // max clients reached
 										alert('The server is full!\n\rThe server refused to establish the connection.');
+										break;
+									case 'e': // server empty
+										alert('The server is empty!\n\rYou cannot join as specator.');
 										break;											
 									case 'g': // game
 										game = data;
@@ -194,7 +210,7 @@
 			$(window).keydown(function(event) {
 				keys['k' + event.keyCode] = true;
 
-				if (event.keyCode == 67) { // c
+				if (game && event.keyCode == 67) { // c
 					if (! rconPassword) {
 						rconPassword = prompt('Please enter the rcon password of the server:');
 					}
@@ -250,17 +266,21 @@
 						}
 					});
 
-					if (me) {
+					if (me && ! spectator) {
 						var distance = getDistance(canvas.width / 2, canvas.height / 2, mouse.x, mouse.y);
 
 						var data = { 
-							a: Math.min(distance / 100, 1),
-							t: (keys.k32 == true), // Spacebar
-							e: (keys.k69 == true), // e
-							f: mouse.click,
+							a: Math.min(distance / 100, 1), // accelerate
+							tu: (keys.k32 == true), // turbo - spacebar
+							e: (keys.k69 == true), // explode - e
+							f: mouse.click, // fire
 							an: getAngle(canvas.width / 2, canvas.height / 2, mouse.x, mouse.y),
 						};
 						connection.sendData('input', data);
+					}
+					if (spectator && mouse.click) {
+						mouse.click = false;
+						connection.sendData('alter');
 					}
 
 					draw(me);
@@ -329,7 +349,7 @@
 					context.lineWidth = 1;
 					context.strokeStyle = 'black';
 					context.strokeText(player.n, player.x - camera.x, player.y - camera.y);
-					context.fillText(player.n, player.x - camera.x, player.y - camera.y);					
+					context.fillText(player.n, player.x - camera.x, player.y - camera.y);
 				});
 
 				context.fillStyle = '#666';
@@ -341,7 +361,7 @@
 					context.beginPath();
 
 					context.moveTo(shape[0] + planetoid.x - camera.x, shape[1] + planetoid.y - camera.y);
-					for(var i = 2; i < shape.length; i += 2) {
+					for (var i = 2; i < shape.length; i += 2) {
 						context.lineTo(shape[i] + planetoid.x - camera.x, shape[i + 1] + planetoid.y - camera.y);
 					}
 
