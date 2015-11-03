@@ -6,13 +6,13 @@ require('./shared.js');
 require('./server_config.js');
 
 var WebSocketServer = require('ws').Server;
-var server = new WebSocketServer({ port: 8080 });
+var server = new WebSocketServer({ port: serverConfig.port });
 
 var game = {
 	t: 'g', // type: game
 	field: {
-		sizeX: 3000,
-		sizeY: 2000,
+		sizeX: serverConfig.fieldSizeX,
+		sizeY: serverConfig.fieldSizeY,
 	},
 	players: [],
 	asteroids: [],
@@ -54,7 +54,7 @@ addBot('Hayley Hunter');
 addBot('Hayley Hunter');
 addBot('Hayley Hunter');
 
-setTimeout(gameLoop, 30);
+setTimeout(gameLoop, serverConfig.gameLoopDelay);
 
 server.on('connection', function connection(connection) {
 	connection.on('message', function incoming(message) {
@@ -87,10 +87,11 @@ server.on('connection', function connection(connection) {
 					return;
 				}
 
+				// Only bots are allowed to use [ and ] in their names
 				data.name = data.name.replace('[', '(');
 				data.name = data.name.replace(']', ')');
 
-				connection.spectator = (data.spectator == true);
+				connection.spectator = (data.spectator == true && serverConfig.allowSpectators);
 
 				if (data.version != version) {
 					log('Client "' + data.name + '" has a different version: ' + data.version);
@@ -243,7 +244,7 @@ function gameLoop()
 {
 	// If there are no clients connected do not let the bots play
 	if (server.clients.length == 0) {
-		setTimeout(gameLoop, 30);
+		setTimeout(gameLoop, serverConfig.gameLoopDelay);
 		return;
 	}
 
@@ -633,7 +634,7 @@ function gameLoop()
 		});
 	});
 
-	setTimeout(gameLoop, 30);
+	setTimeout(gameLoop, serverConfig.gameLoopDelay);
 }
 
 /**
@@ -917,7 +918,7 @@ function log(text)
 
 	text = '[' + date.toUTCString() + '] ' + text;
 
-	fs.appendFile('log.txt', text + '\r\n'); // File output
+	fs.appendFile(serverConfig.logFile, text + '\r\n'); // File output
 	sys.puts(text); // Console ouput 
 }
 
