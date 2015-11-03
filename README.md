@@ -13,11 +13,11 @@ Some strange bio-mass virus tries to conquer the universe! It aims to eat every 
 ### Start
 
 * To start the server: `nodejs server.js` (You will have to end it manually by terminating the process or via the remote command `shutdown`)
-* The server will listen to port 8080 of the system and will use the websocket protocol. Example: `ws://localhost:8080/`
+* The server will listen to port 8080 of the system and will use the websocket protocol. Example URI: `ws://localhost:8080/`
 
 ## Config
 
-Open `server_config.js` and edit these values:
+Open the `server_config.js` file and edit these values:
 
 * `rconPassword` (String): Set the password for remote access
 * `maxClients` (Integer): Limit the number of clients (bots do not count)
