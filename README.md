@@ -39,3 +39,4 @@ Open the `server_config.js` file and edit these values:
 
 * The server will hibernate if no player is in the game
 * When connected to the game as a common player, press `c` to send a command. You will have to enter the rcon password once. The only available command is `shutdown`.
+* To eat another player you need to have 130% of your target's mass
