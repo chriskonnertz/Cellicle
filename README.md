@@ -8,7 +8,7 @@ This is a simple 2D browser game built with NodeJS (server side) and JavaScript 
 
 ### Instructions
 
-Some strange bio-mass virus tries to conquer the universe! It aims to eat every asteroids (small yellow circles) in its way. Yes, with its scifimagical abilities it's able to eat yellow asteroids like popcorn. Delicious! But eating asteroids is not enough. Feed on other players (aka bio-mass) as well! But be aware, you can only eat smaller blobs. And never try to eat planetoids (big gray polygons). if you are smaller than them u automagically land on their dark side and they protect you from other players. But if you are bigger you will collide and lose mass! If you have to escape press `spacebar` to expell one third of your mass to provide propulsion. Or press `e` to lose three quarters of your mass in an explosion but to gain a huge speed boost. You are even capable of using your bio-mass as a weapon! Use your mouse to left click and to fire up to one twentieth of your mass on your opponents. Never forget, if your projectiles have lost their speed opponents are able to feed on it!
+Some strange bio-mass virus tries to conquer the universe! It aims to eat every asteroids (small yellow circles) in its way. Yes, with its scifimagical abilities it's able to eat yellow asteroids like popcorn. Delicious! But eating asteroids is not enough. Feed on other players (aka bio-mass) as well! But be aware, you can only eat smaller blobs. And never try to eat planetoids (big gray polygons). If you are smaller than them you will automagically land on their dark side and they protect you from other players. But if you are bigger you will collide and lose mass! If you have to escape press `spacebar` to expell one third of your mass to provide propulsion. Or press `e` to lose three quarters of your mass in an explosion but to gain a huge speed boost. You are even capable of using your bio-mass as a weapon! Use your mouse to left click and to fire up to one twentieth of your mass on your opponents. Never forget, if your projectiles have lost their speed opponents are able to feed on them!
 
 ### Start
 
@@ -38,5 +38,5 @@ Open the `server_config.js` file and edit these values:
 ## Notes
 
 * The server will hibernate if no player is in the game
-* When connected to the game as a common player, press `c` to send a command. You will have to enter the rcon password once. The only available command is `shutdown`.
+* When connected to the game as a common player, press `c` to send a command as an admin. You will have to enter the rcon password once. The only available command is `shutdown`.
 * To eat another player you need to have 130% of your target's mass
